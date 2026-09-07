@@ -1,88 +1,140 @@
 # claude-disciplined
 
-> **Alpha software.** This project is still in alpha development. APIs, commands, and on-disk formats may change without notice. **Try at your own risk.**
+[![CI](https://github.com/lufzle/claude-disciplined/actions/workflows/ci.yml/badge.svg)](https://github.com/lufzle/claude-disciplined/actions/workflows/ci.yml)
+[![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
 
-A workflow enforcement system for [Claude Code](https://claude.com/claude-code) that ensures disciplined, traceable, goal-aligned software development.
+> **Alpha software.** This project is still in alpha development. Commands, APIs, and on-disk formats may change without notice. **Try at your own risk.**
 
-## Overview
+Workflow enforcement for [Claude Code](https://claude.com/claude-code): structured phases, role-gated agents, and file-based traceability from tasks up to product goals.
 
-claude-disciplined provides two binaries:
+Two binaries:
 
-- **`workflow`** — companion CLI for managing workflow state, artifacts, and queries
-- **`workflow-hook`** — Claude Code hook binary enforcing workflow constraints on agent tool calls
+| Binary | Role |
+| --- | --- |
+| **`workflow`** | Companion CLI for state, artifacts, meetings, and queries |
+| **`workflow-hook`** | Claude Code `PreToolUse` hook that enforces those rules |
 
-The system enforces a structured development workflow with full traceability from individual tasks up to product goals, role-based access control for agents, consensus-driven decision making, and file-based state management.
+The full contract is in [SPEC.md](SPEC.md). Architecture notes for agents working in this repo are in [CLAUDE.md](CLAUDE.md).
 
-See [SPEC.md](SPEC.md) for the full specification.
+## Status
 
-## CLI Commands
+Alpha. Not production-ready. Not published on crates.io. Build from source.
+
+## Install
+
+Requires [Rust](https://rustup.rs/) 1.85 or newer.
 
 ```bash
-workflow init                              # initialize a new project
-workflow status                            # show current workflow state
-workflow advance                           # move to next step (checks gates)
-workflow request-approval <step>           # record stakeholder approval
-workflow escalate <target-step> --reason "..."  # backward transition (logged as decision)
-workflow create requirement <slug>         # create a functional requirement
-workflow create milestone <slug>           # create a milestone
-workflow create epic <slug>                # create an epic (resolves milestone from state)
-workflow create story <slug>               # create a story (resolves epic from state)
-workflow create task <slug> --story <id>   # create a task in a story
-workflow create flow <slug> --story <id> --type <type>  # create a user flow
-workflow propose nfr <slug>               # propose a non-functional requirement (draft)
-workflow read <type> [<id>]               # read artifact content
-echo "body" | workflow write <type> [<id>]  # write artifact body (preserves front matter)
-workflow meeting start <topic>            # start a meeting in the current step
-workflow meeting end                      # end the active meeting
-workflow meeting read                     # read active meeting notes
-workflow meeting contribute <message>     # append to meeting notes
-workflow meeting list                     # list meetings in current step
-workflow meeting propose-decision <summary>  # propose a decision
+git clone https://github.com/lufzle/claude-disciplined.git
+cd claude-disciplined
+cargo install --path . --locked
+```
+
+That installs `workflow` and `workflow-hook` into `~/.cargo/bin`.
+
+### Claude Code hook
+
+Point a `PreToolUse` hook at `workflow-hook` (stdin JSON in, allow on exit 0, deny on exit 2). See [SPEC.md](SPEC.md#hook-binary-contract) for the I/O contract.
+
+## Quick start
+
+```bash
+workflow init                 # create .workflow/ in the current project
+workflow status               # current phase and step
+workflow request-approval product-brief
+workflow advance              # gates must pass
+```
+
+Artifacts live as Markdown with YAML front matter. Prefer the CLI over editing `.workflow/` by hand — the hook denies direct reads/writes to workflow-controlled paths.
+
+## Usage
+
+### Workflow lifecycle
+
+```bash
+workflow init
+workflow status
+workflow advance
+workflow request-approval <step>
+workflow escalate <target-step> --reason "..."
+```
+
+### Artifacts
+
+```bash
+workflow create requirement <slug>
+workflow create milestone <slug>
+workflow create epic <slug>
+workflow create story <slug>
+workflow create task <slug> --story <id>
+workflow create flow <slug> --story <id> --type <type>
+workflow propose nfr <slug>
+workflow read <type> [<id>]
+echo "body" | workflow write <type> [<id>]
+workflow update <id> --status <status>
+```
+
+### Meetings, decisions, actions
+
+```bash
+workflow meeting start <topic>
+workflow meeting end
+workflow meeting read
+workflow meeting contribute <message>
+workflow meeting list
+workflow meeting propose-decision <summary>
 workflow meeting position <id> <agree|disagree|disagree-and-commit> --role <role> [--reason "..."]
-workflow meeting record-decision <id>     # finalize agreed decision
+workflow meeting record-decision <id>
 workflow meeting resolve-decision <id> --role <role> --justification "..."
 workflow meeting drop-decision <id> --reason "..."
 workflow meeting supersede-decision <id> --by <new-id>
-workflow meeting decision-status <id>     # check decision status
-workflow meeting list-decisions           # list all decisions
+workflow meeting decision-status <id>
+workflow meeting list-decisions
 workflow meeting address-disagreement <id> --role <role>
 workflow meeting add-action <desc> --type <type> --assignee <role> [--immediate]
 workflow meeting start-action <id>
 workflow meeting complete-action <id> --summary "..."
 workflow meeting discard-action <id> --reason "..."
 workflow meeting list-actions
-workflow task start <id>               # mark task as in-progress
-workflow task complete <id>            # mark task as completed
-workflow task block <id> --reason "..."  # block task with reason
-workflow task unblock <id>             # unblock task (back to pending)
-workflow task list [--epic <id>] [--story <id>] [--status <s>]  # list tasks
-workflow epic start <id>               # create branch/worktree, activate epic
-workflow epic complete <id>            # finalize after retrospective
-workflow epic list [--milestone <id>] [--status <s>]  # list epics
 ```
 
-## Building
+### Tasks and epics
+
+```bash
+workflow task start <id>
+workflow task complete <id>
+workflow task block <id> --reason "..."
+workflow task unblock <id>
+workflow task list [--epic <id>] [--story <id>] [--status <s>]
+workflow epic start <id>
+workflow epic complete <id>
+workflow epic list [--milestone <id>] [--status <s>]
+```
+
+### Query, validate, verify
+
+```bash
+workflow query requirements|nfrs|milestones|epics|stories|tasks|flows|decisions
+workflow query trace|impact|rationale|coverage|goal ...
+workflow validate links|coverage|structure|coherence|gates
+workflow verify story <id>
+workflow verify epic <id>
+```
+
+## Development
 
 ```bash
 cargo build --release
+cargo test --locked
+cargo clippy --all-targets --locked -- -D warnings
+rustup run nightly cargo fmt --all -- --check   # rustfmt.toml uses nightly options
+cargo deny check
 ```
 
-## Testing
-
-```bash
-# All tests
-cargo test
-
-# Clippy
-cargo clippy --all-targets -- -D warnings
-
-# Format (requires nightly)
-rustup run nightly cargo fmt --check
-
-# Mutation testing
-cargo mutants --timeout 30
-```
+CI runs the same checks on every push to `main` and on pull requests. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-AGPL-3.0 — see [LICENSE](LICENSE).
+[GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`).
+
+If you run a modified version as a network service, you must offer the corresponding source to its users (AGPL §13).
