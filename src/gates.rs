@@ -26,7 +26,7 @@ fn require_approval<S: Store>(violations: &mut Vec<Violation>, store: &S, step_n
 }
 
 fn has_approval<S: Store>(store: &S, step_name: &str) -> bool {
-    store.read_approvals().ok().is_some_and(|approvals| {
+    store.read_approvals().is_ok_and(|approvals| {
         approvals
             .iter()
             .any(|line| line.contains(&format!("\"step\":\"{step_name}\"")))
